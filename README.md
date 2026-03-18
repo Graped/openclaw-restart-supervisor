@@ -35,9 +35,29 @@
 
 这个项目的意义，就是把这条恢复路径显式化、制度化，而不是靠运气。
 
+## 最推荐的安装方式
+
+如果你只是想尽快接入，优先用脚本安装。
+
+```bash
+bash scripts/install.sh /path/to/openclaw-workspace
+```
+
+如果你已经在目标工作区环境里，也可以这样：
+
+```bash
+OPENCLAW_WORKSPACE=/path/to/openclaw-workspace bash scripts/install.sh
+```
+
+卸载：
+
+```bash
+bash scripts/uninstall.sh /path/to/openclaw-workspace
+```
+
 ## 给 AI 的安装说明
 
-如果你是另一个 AI 智能体，并且你的目标是把本项目安装到某个 OpenClaw 工作区，请按下面的规则执行，不要自行猜测目录结构。
+如果你是另一个 AI 智能体，并且你的目标是把本项目安装到某个 OpenClaw 工作区，请优先执行仓库内现成脚本，而不是手写复制命令。
 
 ### 安装目标
 
@@ -55,43 +75,36 @@
 
 ### 默认安装目标
 
-如果用户没有指定路径，默认把当前 OpenClaw workspace 视为安装目标。
+如果用户没有指定路径，默认把 `OPENCLAW_WORKSPACE` 视为安装目标；如果这个环境变量也没有设置，就必须显式传入工作区路径。
 
-### 安装步骤
+### AI 应优先执行的命令
+
+安装：
+
+```bash
+bash scripts/install.sh /path/to/openclaw-workspace
+```
+
+卸载：
+
+```bash
+bash scripts/uninstall.sh /path/to/openclaw-workspace
+```
+
+### install.sh 会做什么
 
 1. 确认目标工作区路径
 2. 创建缺失目录：`scripts`、`hooks/restart-supervisor`、`.supervision`
-3. 复制本仓库中的以下文件到目标工作区：
+3. 复制以下文件到目标工作区：
    - `PENDING.md`
    - `scripts/task_ledger.py`
    - `hooks/restart-supervisor/HOOK.md`
    - `hooks/restart-supervisor/handler.js`
-   - `examples/.supervision/pending-jobs.json` -> `.supervision/pending-jobs.json`
-4. 给 `scripts/task_ledger.py` 添加可执行权限
-5. 安装并启用 hook
-6. 重启 gateway
-7. 验证 hook 状态
-
-### 可直接执行的安装命令
-
-将 `/path/to/repo` 替换为本仓库路径，将 `/path/to/workspace` 替换为目标 OpenClaw 工作区路径：
-
-```bash
-mkdir -p /path/to/workspace/.supervision
-mkdir -p /path/to/workspace/scripts
-mkdir -p /path/to/workspace/hooks/restart-supervisor
-cp /path/to/repo/PENDING.md /path/to/workspace/PENDING.md
-cp /path/to/repo/scripts/task_ledger.py /path/to/workspace/scripts/task_ledger.py
-cp /path/to/repo/hooks/restart-supervisor/HOOK.md /path/to/workspace/hooks/restart-supervisor/HOOK.md
-cp /path/to/repo/hooks/restart-supervisor/handler.js /path/to/workspace/hooks/restart-supervisor/handler.js
-cp /path/to/repo/examples/.supervision/pending-jobs.json /path/to/workspace/.supervision/pending-jobs.json
-chmod +x /path/to/workspace/scripts/task_ledger.py
-openclaw hooks install /path/to/workspace/hooks/restart-supervisor
-openclaw hooks enable restart-supervisor
-openclaw gateway restart
-openclaw hooks list
-openclaw hooks check
-```
+4. 如果目标工作区还没有 `.supervision/pending-jobs.json`，就写入示例账本
+5. 给 `scripts/task_ledger.py` 添加可执行权限
+6. 安装并启用 hook
+7. 重启 gateway
+8. 执行 `openclaw hooks list` 和 `openclaw hooks check`
 
 ### 验证标准
 
@@ -102,43 +115,35 @@ openclaw hooks check
 - 目标工作区存在 `.supervision/pending-jobs.json`
 - 目标工作区存在 `scripts/task_ledger.py`
 
-### 最小回滚步骤
+### 回滚标准
 
-如果需要卸载，请执行：
+卸载脚本会：
 
-```bash
-openclaw hooks disable restart-supervisor || true
-```
-
-然后删除这些文件：
-
-```text
-<workspace>/hooks/restart-supervisor/HOOK.md
-<workspace>/hooks/restart-supervisor/handler.js
-<workspace>/scripts/task_ledger.py
-<workspace>/PENDING.md
-<workspace>/.supervision/pending-jobs.json
-```
+- 先尝试 `openclaw hooks disable restart-supervisor`
+- 删除本项目接入时创建的核心文件
+- 再尝试重启 gateway
 
 如果目标工作区本来就有这些文件，请先审查差异，不要盲目覆盖或删除。
 
-## 快速开始
+## 手动安装方式
 
-1. 把协议文件和辅助脚本复制到你的 OpenClaw 工作区
-2. 安装并启用 `restart-supervisor` hook
-3. 把可能跨越单次会话的任务写入账本
-4. 如果中途发生重启，就让 bootstrap 阶段的恢复提醒接管后续动作
+如果你不想用脚本，也可以手动执行：
 
 ```bash
-mkdir -p .supervision
+mkdir -p /path/to/workspace/.supervision
+mkdir -p /path/to/workspace/scripts
+mkdir -p /path/to/workspace/hooks/restart-supervisor
 cp PENDING.md /path/to/workspace/PENDING.md
 cp scripts/task_ledger.py /path/to/workspace/scripts/task_ledger.py
-cp -R hooks/restart-supervisor /path/to/workspace/hooks/restart-supervisor
+cp hooks/restart-supervisor/HOOK.md /path/to/workspace/hooks/restart-supervisor/HOOK.md
+cp hooks/restart-supervisor/handler.js /path/to/workspace/hooks/restart-supervisor/handler.js
 cp examples/.supervision/pending-jobs.json /path/to/workspace/.supervision/pending-jobs.json
 chmod +x /path/to/workspace/scripts/task_ledger.py
 openclaw hooks install /path/to/workspace/hooks/restart-supervisor
 openclaw hooks enable restart-supervisor
 openclaw gateway restart
+openclaw hooks list
+openclaw hooks check
 ```
 
 ## 工作原理
@@ -190,6 +195,8 @@ openclaw gateway restart
 ```text
 hooks/restart-supervisor/HOOK.md
 hooks/restart-supervisor/handler.js
+scripts/install.sh
+scripts/uninstall.sh
 scripts/task_ledger.py
 examples/.supervision/pending-jobs.json
 PENDING.md
@@ -221,6 +228,7 @@ python3 scripts/task_ledger.py list
 - 这个项目本身不会强制自动发消息
 - 它做的是：在启动阶段注入恢复提醒，并把“先汇报再恢复”变成一种规则
 - 如果你想要真正无人值守的自动发送，需要再叠一层 message-sending layer，去读取同一份账本并主动发信
+- `install.sh` 默认不会覆盖已有账本，只会在目标工作区缺失 `.supervision/pending-jobs.json` 时写入示例文件
 
 ## 适合谁
 
