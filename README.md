@@ -35,6 +35,93 @@
 
 这个项目的意义，就是把这条恢复路径显式化、制度化，而不是靠运气。
 
+## 给 AI 的安装说明
+
+如果你是另一个 AI 智能体，并且你的目标是把本项目安装到某个 OpenClaw 工作区，请按下面的规则执行，不要自行猜测目录结构。
+
+### 安装目标
+
+把本仓库内容接入“目标 OpenClaw 工作区”，而不是当前仓库自身。
+
+目标工作区至少应包含这些路径：
+
+```text
+<workspace>/PENDING.md
+<workspace>/scripts/task_ledger.py
+<workspace>/hooks/restart-supervisor/HOOK.md
+<workspace>/hooks/restart-supervisor/handler.js
+<workspace>/.supervision/pending-jobs.json
+```
+
+### 默认安装目标
+
+如果用户没有指定路径，默认把当前 OpenClaw workspace 视为安装目标。
+
+### 安装步骤
+
+1. 确认目标工作区路径
+2. 创建缺失目录：`scripts`、`hooks/restart-supervisor`、`.supervision`
+3. 复制本仓库中的以下文件到目标工作区：
+   - `PENDING.md`
+   - `scripts/task_ledger.py`
+   - `hooks/restart-supervisor/HOOK.md`
+   - `hooks/restart-supervisor/handler.js`
+   - `examples/.supervision/pending-jobs.json` -> `.supervision/pending-jobs.json`
+4. 给 `scripts/task_ledger.py` 添加可执行权限
+5. 安装并启用 hook
+6. 重启 gateway
+7. 验证 hook 状态
+
+### 可直接执行的安装命令
+
+将 `/path/to/repo` 替换为本仓库路径，将 `/path/to/workspace` 替换为目标 OpenClaw 工作区路径：
+
+```bash
+mkdir -p /path/to/workspace/.supervision
+mkdir -p /path/to/workspace/scripts
+mkdir -p /path/to/workspace/hooks/restart-supervisor
+cp /path/to/repo/PENDING.md /path/to/workspace/PENDING.md
+cp /path/to/repo/scripts/task_ledger.py /path/to/workspace/scripts/task_ledger.py
+cp /path/to/repo/hooks/restart-supervisor/HOOK.md /path/to/workspace/hooks/restart-supervisor/HOOK.md
+cp /path/to/repo/hooks/restart-supervisor/handler.js /path/to/workspace/hooks/restart-supervisor/handler.js
+cp /path/to/repo/examples/.supervision/pending-jobs.json /path/to/workspace/.supervision/pending-jobs.json
+chmod +x /path/to/workspace/scripts/task_ledger.py
+openclaw hooks install /path/to/workspace/hooks/restart-supervisor
+openclaw hooks enable restart-supervisor
+openclaw gateway restart
+openclaw hooks list
+openclaw hooks check
+```
+
+### 验证标准
+
+安装完成后，至少验证以下几点：
+
+- `openclaw hooks list` 中能看到 `restart-supervisor`
+- `openclaw hooks check` 中 `restart-supervisor` 状态为 `ready`
+- 目标工作区存在 `.supervision/pending-jobs.json`
+- 目标工作区存在 `scripts/task_ledger.py`
+
+### 最小回滚步骤
+
+如果需要卸载，请执行：
+
+```bash
+openclaw hooks disable restart-supervisor || true
+```
+
+然后删除这些文件：
+
+```text
+<workspace>/hooks/restart-supervisor/HOOK.md
+<workspace>/hooks/restart-supervisor/handler.js
+<workspace>/scripts/task_ledger.py
+<workspace>/PENDING.md
+<workspace>/.supervision/pending-jobs.json
+```
+
+如果目标工作区本来就有这些文件，请先审查差异，不要盲目覆盖或删除。
+
 ## 快速开始
 
 1. 把协议文件和辅助脚本复制到你的 OpenClaw 工作区
