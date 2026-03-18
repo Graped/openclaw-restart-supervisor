@@ -30,6 +30,37 @@ Long-running agent work often fails socially before it fails technically.
 
 The files may still be there, the task may still be recoverable, and the runtime may already be healthy again - but the user has no idea what happened. This project makes that recovery path explicit.
 
+## Quick start
+
+1. Copy the protocol and helper files into your OpenClaw workspace.
+2. Install and enable the `restart-supervisor` hook.
+3. Record any task that may outlive a single session.
+4. If a restart interrupts work, let the bootstrap reminder drive the recovery flow.
+
+```bash
+mkdir -p .supervision
+cp PENDING.md /path/to/workspace/PENDING.md
+cp scripts/task_ledger.py /path/to/workspace/scripts/task_ledger.py
+cp -R hooks/restart-supervisor /path/to/workspace/hooks/restart-supervisor
+cp examples/.supervision/pending-jobs.json /path/to/workspace/.supervision/pending-jobs.json
+chmod +x /path/to/workspace/scripts/task_ledger.py
+openclaw hooks install /path/to/workspace/hooks/restart-supervisor
+openclaw hooks enable restart-supervisor
+openclaw gateway restart
+```
+
+## How it works
+
+```text
+1. Agent starts a long task
+2. Task is written to .supervision/pending-jobs.json
+3. Work is interrupted by restart, crash, or manual stop
+4. On next bootstrap, the hook inspects unfinished jobs
+5. Recovery instructions are injected into startup context
+6. Agent sends a progress update if userUpdated=false
+7. Agent resumes, closes, or escalates the task
+```
+
 ## Core ideas
 
 ### 1. Task ledger
@@ -71,27 +102,6 @@ PENDING.md
 docs/design.md
 docs/state-machine.md
 docs/github-release-checklist.md
-```
-
-## Install
-
-Copy the protocol and scripts into your OpenClaw workspace:
-
-```bash
-mkdir -p .supervision
-cp PENDING.md /path/to/workspace/PENDING.md
-cp scripts/task_ledger.py /path/to/workspace/scripts/task_ledger.py
-cp -R hooks/restart-supervisor /path/to/workspace/hooks/restart-supervisor
-cp examples/.supervision/pending-jobs.json /path/to/workspace/.supervision/pending-jobs.json
-chmod +x /path/to/workspace/scripts/task_ledger.py
-```
-
-Then install and enable the hook:
-
-```bash
-openclaw hooks install /path/to/workspace/hooks/restart-supervisor
-openclaw hooks enable restart-supervisor
-openclaw gateway restart
 ```
 
 ## Example ledger commands
