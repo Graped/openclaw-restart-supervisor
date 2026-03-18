@@ -1,28 +1,43 @@
 # openclaw-restart-supervisor
 
-A small recovery layer for OpenClaw that helps agents resume interrupted work after a restart.
+A lightweight restart recovery layer for OpenClaw with task ledger, startup self-check, and progress-first reporting.
 
-It combines three ideas:
-- a persistent task ledger
-- a bootstrap self-check hook
-- a communication rule that prioritizes user-visible progress updates
+It helps an agent recover interrupted work after a restart without silently losing context or leaving the user uninformed.
+
+## What it does
+
+This project combines three simple pieces:
+
+- a persistent task ledger for long-running work
+- a bootstrap self-check hook that inspects unfinished jobs
+- a progress-first communication rule so the user gets an update before more silent work resumes
+
+Together, they create a lightweight recovery loop:
+
+```text
+long task starts
+-> ledger entry is written to disk
+-> restart or interruption happens
+-> bootstrap hook inspects unfinished jobs
+-> agent sees recovery reminder on startup
+-> agent sends a short progress update if needed
+-> work resumes
+```
 
 ## Why this exists
 
-Long-running agent work can survive in files more reliably than in session context.
+Long-running agent work often fails socially before it fails technically.
 
-This project makes restart recovery explicit:
-- write long tasks to disk
-- inspect unfinished work on bootstrap
-- remind the agent to report status before going silent again
+The files may still be there, the task may still be recoverable, and the runtime may already be healthy again - but the user has no idea what happened. This project makes that recovery path explicit.
 
-## Components
+## Core ideas
 
 ### 1. Task ledger
 
 The ledger lives at `.supervision/pending-jobs.json`.
 
 Each job records:
+
 - `id`
 - `title`
 - `status`
@@ -37,25 +52,13 @@ Each job records:
 
 The `restart-supervisor` hook runs on `agent:bootstrap`.
 
-It reads the ledger, finds unfinished work, and injects a virtual bootstrap file so the agent sees restart recovery instructions before handling new long tasks.
+It reads the ledger, finds unfinished work, and injects a virtual reminder into startup context so the agent notices interrupted work before taking on new long tasks.
 
-### 3. Progress-first communication
+### 3. Progress-first reporting
 
-If a job is still active and `userUpdated` is `false`, the agent should send a short progress note before continuing silent work.
+If a job is still active and `userUpdated` is `false`, the agent should send a short progress note before continuing quiet execution.
 
-## Flow
-
-```text
-Start long task
--> write/update ledger entry
--> keep lastAction and nextStep fresh
--> restart happens
--> hook reads ledger on bootstrap
--> unfinished work is injected into startup context
--> agent sends progress note if needed
--> agent resumes work
--> task is marked done
-```
+That one rule is what turns silent recovery into visible recovery.
 
 ## Repository layout
 
@@ -65,6 +68,9 @@ hooks/restart-supervisor/handler.js
 scripts/task_ledger.py
 examples/.supervision/pending-jobs.json
 PENDING.md
+docs/design.md
+docs/state-machine.md
+docs/github-release-checklist.md
 ```
 
 ## Install
@@ -101,16 +107,16 @@ python3 scripts/task_ledger.py list
 ## Recommended operating rules
 
 - Log any task likely to take more than 2 minutes
-- Update `lastAction`, `nextStep`, and `userUpdated` after meaningful steps
+- Keep `lastAction`, `nextStep`, and `userUpdated` fresh
 - Before restarting the gateway, send a short progress note if the user is waiting
-- After restart, check unfinished entries before taking on new long tasks
-- Mark tasks `done`, `cancelled`, or `superseded` when they are no longer active
+- After restart, inspect unfinished entries before starting new long tasks
+- Mark jobs `done`, `cancelled`, or `superseded` when they are no longer active
 
 ## Notes
 
-- This project does not force outbound messaging on its own.
-- Instead, it injects recovery instructions at bootstrap so the agent can prioritize communication.
-- If you want fully automatic message delivery, add a message-sending layer that reads the same ledger.
+- This project does not force outbound messaging by itself
+- It injects recovery instructions at bootstrap and relies on the agent to act on them
+- If you want fully automatic message delivery, add a message-sending layer that reads the same ledger
 
 ## License
 
