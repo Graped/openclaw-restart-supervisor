@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "install-remaining-skills",
+      "title": "Finish installing requested skills",
+      "status": "running",
+      "startedAt": "2026-03-18T03:02:12.024055+00:00",
+      "lastUpdatedAt": "2026-03-18T03:10:00.000000+00:00",
+      "lastAction": "Installed 3 of 6 requested skills",
+      "nextStep": "Resume installation of the remaining skills after restart",
+      "userUpdated": false,
+      "chatId": "chat:example"
+    }
+  ]
+}
