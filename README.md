@@ -1,41 +1,46 @@
 # openclaw-restart-supervisor
 
-A lightweight restart recovery layer for OpenClaw with task ledger, startup self-check, and progress-first reporting.
+一个面向 OpenClaw 的轻量级重启恢复层，核心包括：任务账本、启动自检、以及“进度优先”的汇报机制。
 
-It helps an agent recover interrupted work after a restart without silently losing context or leaving the user uninformed.
+它的目标很直接：当智能体在长任务中途遇到重启、异常中断或会话丢失时，尽量不要把任务静默丢掉，也不要让用户处于“你到底还在不在做事”的状态。
 
-## What it does
+## 它解决什么问题
 
-This project combines three simple pieces:
+这套方案把三件简单但关键的事情组合在一起：
 
-- a persistent task ledger for long-running work
-- a bootstrap self-check hook that inspects unfinished jobs
-- a progress-first communication rule so the user gets an update before more silent work resumes
+- 用持久化任务账本记录长任务状态
+- 在启动时自动检查是否有未完成工作
+- 在继续静默执行前，优先给用户一个简短进度说明
 
-Together, they create a lightweight recovery loop:
+组合起来之后，恢复链路会变成这样：
 
 ```text
-long task starts
--> ledger entry is written to disk
--> restart or interruption happens
--> bootstrap hook inspects unfinished jobs
--> agent sees recovery reminder on startup
--> agent sends a short progress update if needed
--> work resumes
+长任务开始
+-> 写入账本
+-> 中途发生重启 / 中断
+-> 启动时读取未完成任务
+-> 注入恢复提醒
+-> 如果用户还没收到进度，先汇报
+-> 再继续恢复执行
 ```
 
-## Why this exists
+## 为什么需要它
 
-Long-running agent work often fails socially before it fails technically.
+很多时候，任务并不是“技术上失败”了，而是“沟通上消失”了。
 
-The files may still be there, the task may still be recoverable, and the runtime may already be healthy again - but the user has no idea what happened. This project makes that recovery path explicit.
+文件还在，状态还在，运行时甚至已经恢复健康，但用户看到的表象却是：
+- 机器人突然不回了
+- 不知道任务做到哪一步了
+- 重启后也没人主动解释
 
-## Quick start
+这个项目的意义，就是把这条恢复路径显式化、制度化，而不是靠运气。
 
-1. Copy the protocol and helper files into your OpenClaw workspace.
-2. Install and enable the `restart-supervisor` hook.
-3. Record any task that may outlive a single session.
-4. If a restart interrupts work, let the bootstrap reminder drive the recovery flow.
+## 快速开始
+
+1. 把协议文件和辅助脚本复制到你的 OpenClaw 工作区
+2. 安装并启用 `restart-supervisor` hook
+3. 把可能跨越单次会话的任务写入账本
+4. 如果中途发生重启，就让 bootstrap 阶段的恢复提醒接管后续动作
 
 ```bash
 mkdir -p .supervision
@@ -49,25 +54,25 @@ openclaw hooks enable restart-supervisor
 openclaw gateway restart
 ```
 
-## How it works
+## 工作原理
 
 ```text
-1. Agent starts a long task
-2. Task is written to .supervision/pending-jobs.json
-3. Work is interrupted by restart, crash, or manual stop
-4. On next bootstrap, the hook inspects unfinished jobs
-5. Recovery instructions are injected into startup context
-6. Agent sends a progress update if userUpdated=false
-7. Agent resumes, closes, or escalates the task
+1. 智能体开始执行一个长任务
+2. 任务状态被写入 .supervision/pending-jobs.json
+3. 工作被重启、崩溃或人工中断打断
+4. 下次 bootstrap 时，hook 会扫描未完成任务
+5. 恢复提醒被注入启动上下文
+6. 如果 userUpdated=false，先给用户发进度
+7. 再恢复、关闭或升级处理这个任务
 ```
 
-## Core ideas
+## 核心设计
 
-### 1. Task ledger
+### 1. 任务账本
 
-The ledger lives at `.supervision/pending-jobs.json`.
+账本文件位于：`.supervision/pending-jobs.json`
 
-Each job records:
+每个任务至少记录这些字段：
 
 - `id`
 - `title`
@@ -79,19 +84,21 @@ Each job records:
 - `userUpdated`
 - `chatId`
 
-### 2. Bootstrap self-check
+这让“任务状态”从会话上下文中剥离出来，落到磁盘上。
 
-The `restart-supervisor` hook runs on `agent:bootstrap`.
+### 2. 启动自检
 
-It reads the ledger, finds unfinished work, and injects a virtual reminder into startup context so the agent notices interrupted work before taking on new long tasks.
+`restart-supervisor` hook 运行在 `agent:bootstrap` 阶段。
 
-### 3. Progress-first reporting
+它会读取账本，筛出未完成任务，并把恢复提醒注入启动上下文，让智能体在处理新任务之前，先看到被中断的旧任务。
 
-If a job is still active and `userUpdated` is `false`, the agent should send a short progress note before continuing quiet execution.
+### 3. 进度优先汇报
 
-That one rule is what turns silent recovery into visible recovery.
+如果某个任务仍处于活跃状态，且 `userUpdated=false`，智能体应该先给用户一条简短进度说明，再继续安静做事。
 
-## Repository layout
+这条规则本身很简单，但它决定了“恢复”是对用户可见，还是继续静默失联。
+
+## 仓库结构
 
 ```text
 hooks/restart-supervisor/HOOK.md
@@ -104,7 +111,7 @@ docs/state-machine.md
 docs/github-release-checklist.md
 ```
 
-## Example ledger commands
+## 账本命令示例
 
 ```bash
 python3 scripts/task_ledger.py add install-skills "Finish installing requested skills"
@@ -114,19 +121,28 @@ python3 scripts/task_ledger.py update install-skills userUpdated false
 python3 scripts/task_ledger.py list
 ```
 
-## Recommended operating rules
+## 推荐运行规则
 
-- Log any task likely to take more than 2 minutes
-- Keep `lastAction`, `nextStep`, and `userUpdated` fresh
-- Before restarting the gateway, send a short progress note if the user is waiting
-- After restart, inspect unfinished entries before starting new long tasks
-- Mark jobs `done`, `cancelled`, or `superseded` when they are no longer active
+- 预计超过 2 分钟的任务，应该先记到账本
+- 持续更新 `lastAction`、`nextStep`、`userUpdated`
+- 在重启 gateway 之前，如果用户正在等待，应先发一条简短进度
+- 重启后先检查未完成任务，再接新的长任务
+- 不再活跃的任务应及时标记为 `done`、`cancelled` 或 `superseded`
 
-## Notes
+## 注意事项
 
-- This project does not force outbound messaging by itself
-- It injects recovery instructions at bootstrap and relies on the agent to act on them
-- If you want fully automatic message delivery, add a message-sending layer that reads the same ledger
+- 这个项目本身不会强制自动发消息
+- 它做的是：在启动阶段注入恢复提醒，并把“先汇报再恢复”变成一种规则
+- 如果你想要真正无人值守的自动发送，需要再叠一层 message-sending layer，去读取同一份账本并主动发信
+
+## 适合谁
+
+如果你正在用 OpenClaw 做这些事情，这个项目会特别有用：
+
+- 长时间运行的安装、迁移、整理任务
+- 重启后需要接着干的自动化流程
+- 希望智能体“别闷头做事，先汇报”的团队协作场景
+- 需要把恢复逻辑做成可复用工作区规范的人
 
 ## License
 
